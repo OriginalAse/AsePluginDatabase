@@ -24,5 +24,5 @@ public enum DataType {
     VARBINARY,
     TINYBLOB,
     BLOB,
-    MEDIUMBLOB;
+    MEDIUMBLOB
 }

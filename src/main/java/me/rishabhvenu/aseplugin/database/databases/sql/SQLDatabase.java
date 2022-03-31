@@ -1,17 +1,24 @@
 package me.rishabhvenu.aseplugin.database.databases.sql;
 
+import me.rishabhvenu.aseplugin.AsePlugin;
+import me.rishabhvenu.aseplugin.database.options.ConnectionOptions;
+import org.bukkit.Bukkit;
+
 import java.sql.*;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public abstract class SQLDatabase {
+    private final AsePlugin plugin;
     private Connection connection;
 
-    public SQLDatabase(String host, int port, String database, String username, String password, String driver,
-                       String connectionname) {
+    public SQLDatabase(AsePlugin plugin, ConnectionOptions options, String driver, String connectionname) {
+        this.plugin = plugin;
         try {
             Class.forName(driver);
-            this.connection = DriverManager.getConnection("jdbc:" + connectionname + "://"  + host + ":" +
-                    port + "/" + database + "?autoReconnect=true", username, password);
+            this.connection = DriverManager.getConnection("jdbc:" + connectionname + "://"  + options.getHost() + ":" +
+                    options.getPort() + "/" + options.getDatabase() + "?autoReconnect=true", options.getUsername(), options.getPassword());
         } catch (ClassNotFoundException | SQLException e) {
             e.printStackTrace();
         }
@@ -22,14 +29,18 @@ public abstract class SQLDatabase {
     }
 
     public boolean tableExists(String table) {
-        try {
-            DatabaseMetaData dbm = connection.getMetaData();
-            ResultSet rs = dbm.getTables(null, null, table, null);
-            return rs.next();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return false;
+        AtomicBoolean exists = new AtomicBoolean(false);
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                DatabaseMetaData dbm = connection.getMetaData();
+                ResultSet rs = dbm.getTables(null, null, table, null);
+                exists.set(rs.next());
+                rs.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        });
+        return exists.get();
     }
 
     public Table createTable(String table) {
@@ -55,12 +66,15 @@ public abstract class SQLDatabase {
     }
 
     public void execute(String query) {
-        try {
-            Statement statement = connection.createStatement();
-            statement.executeUpdate(query);
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                Statement statement = connection.createStatement();
+                statement.executeUpdate(query);
+                statement.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        });
     }
 
     public ResultSet select(String table, String select, String column, String value) {
@@ -72,13 +86,17 @@ public abstract class SQLDatabase {
     }
 
     public ResultSet query(String query) {
-        try {
-            Statement statement = connection.createStatement();
-            return statement.executeQuery(query);
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return null;
+        AtomicReference<ResultSet> rs = new AtomicReference<>();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                Statement statement = connection.createStatement();
+                rs.set(statement.executeQuery(query));
+                statement.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        });
+        return rs.get();
     }
 
     private void bracketQueryBuilder(String[] columns, StringBuilder sb) {
